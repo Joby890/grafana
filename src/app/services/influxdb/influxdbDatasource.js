@@ -139,7 +139,7 @@ function (angular, _, kbn, InfluxSeries, InfluxQueryBuilder) {
     }
 
     InfluxDatasource.prototype._seriesQuery = function(query) {
-      return this._influxRequest('GET', '/series', {
+      return this._influxRequest('GET', '/', {
         q: query,
         time_precision: 's',
       });
@@ -172,12 +172,23 @@ function (angular, _, kbn, InfluxSeries, InfluxQueryBuilder) {
         };
 
         options.headers = options.headers || {};
+        //Pull the most updated auth token from local storage
+        options.headers["X-Google-Id"] = localStorage.getItem("id_token");
         if (_this.basicAuth) {
           options.headers.Authorization = 'Basic ' + _this.basicAuth;
         }
-
         return $http(options).success(function (data) {
-          deferred.resolve(data);
+            deferred.resolve(data.series && data.series.map(function(series) {
+              //Our returned data looks a little different than raw queries.
+              return Object.assign({}, series, {
+                //We don't send the name prop create it from series & scope
+                name: series.scope + "." + series.series,
+                  points: series.points.map(function(single) {
+                    //Our data is returned in millis convert it to seconds
+                    return [single[0] / 1000, single[1], single[2]];
+                  })
+              });
+            }) || []);
         });
       }, 10);
 
@@ -202,7 +213,7 @@ function (angular, _, kbn, InfluxSeries, InfluxQueryBuilder) {
       }
       else {
         var self = this;
-        return this._influxRequest('POST', '/series', data).then(function() {
+        return this._influxRequest('POST', '/', data).then(function() {
           self._removeUnslugifiedDashboard(id, title, false);
           return { title: title, url: '/dashboard/db/' + id };
         }, function(err) {
@@ -227,7 +238,7 @@ function (angular, _, kbn, InfluxSeries, InfluxQueryBuilder) {
       data[0].columns.push('expires');
       data[0].points[0].push(this._getTempDashboardExpiresDate());
 
-      return this._influxRequest('POST', '/series', data).then(function() {
+      return this._influxRequest('POST', '/', data).then(function() {
         var baseUrl = window.location.href.replace(window.location.hash,'');
         var url = baseUrl + "#dashboard/temp/" + id;
         return { title: title, url: url };
